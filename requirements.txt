@@ -1,0 +1,13 @@
+bip-utils
+python-dotenv
+requests
+pgpy
+python-gnupg
+web3
+bit
+bitcash
+solders
+solana
+xrpl-py
+bitcoinlib
+base58
