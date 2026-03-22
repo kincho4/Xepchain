@@ -319,14 +319,28 @@ class WalletSend:
         self.txid = txid
 
     def broadcast(self, data):
-        url = f"https://api.tatum.io/v3/{BROADCAST_PATHS[self.type().lower()]}"
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "x-api-key": os.getenv("TATUM_API_KEY")
-        }
-        return requests.post(url, headers=headers, json={"txData": data}).json()
-    
+        if self.type != "SOL":
+            url = f"https://api.tatum.io/v3/{BROADCAST_PATHS[self.type().lower()]}"
+            headers = {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "x-api-key": os.getenv("TATUM_API_KEY")
+            }
+            return requests.post(url, headers=headers, json={"txData": data}).json()
+        else:
+                url = "https://api.mainnet-beta.solana.com"
+                payload = {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "sendTransaction",
+                    "params": [
+                        data,
+                        {"encoding": "base58"}
+                    ]
+                }
+                response = requests.post(url, json=payload)
+                return response.json()
+
     def _signUTXO(self):
         key = Key(self.private, network=UTXO_CHAINS[self.type]["network"])
         tx = Transaction(network=UTXO_CHAINS[self.type]["network"])
