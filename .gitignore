@@ -1,2 +1,3 @@
 .env
 wallets.db
+orders.db
