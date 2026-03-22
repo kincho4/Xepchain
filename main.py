@@ -11,7 +11,9 @@ import base58
 import base64
 
 # Ethereum
-from web3 import Web3
+from web3 import Web3, EthereumTesterProvider
+from web3.middleware import SignAndSendRawMiddlewareBuilder
+from eth_account import Account
 
 # Solana
 from solders.keypair import Keypair
@@ -19,13 +21,7 @@ from solders.pubkey import Pubkey
 from solders.system_program import transfer, TransferParams
 from solders.transaction import Transaction as SolTransaction
 from solders.message import Message
-from solders.hash import Hash
-
-# XRP
-from xrpl.wallet import Wallet
-from xrpl.models.transactions import Payment
-from xrpl.transaction import autofill_and_sign
-from xrpl.clients import JsonRpcClient
+from solana.rpc.api import Client
 
 # UTXO
 from bitcoinlib.keys import Key
@@ -40,7 +36,6 @@ cg_map = {
     "POL": "polygon-ecosystem-token",
     "BNB": "binancecoin",
     "SOL": "solana",
-    "XRP": "ripple",
     "BCH": "bitcoin-cash",
     "USDC": "usd",
     "USDT": "usd",
@@ -55,7 +50,6 @@ blockchair_map = {
     "ETH": "ethereum",
     "BNB": "binance-smart-chain",
     "SOL": "solana",
-    "XRP": "ripple",
     "BCH": "bitcoin-cash",
 }
 
@@ -63,9 +57,9 @@ coin_decimals = {
     "BTC": 100000000,
     "LTC": 100000000,
     "BCH": 100000000,
-    "EVM": 10**18,
     "SOL": 10**9,
-    "XRP": 1000000,
+    "ETH": 10**18,
+    "EVM": 10**18,
     "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": 1000000, #usdc
     "0xdac17f958d2ee523a2206206994597c13d831ec7": 1000000, #usdt
     "0x6B175474E89094C44Da98b954EedeAC495271d0F": 10**18 #dai
@@ -78,7 +72,6 @@ coin_confirmations = {
     "ETH": 12,
     "BNB": 25,
     "SOL": 1,
-    "XRP": 1,
 }
 
 BROADCAST_PATHS = {
@@ -87,7 +80,6 @@ BROADCAST_PATHS = {
     "BCH": "/bcash/broadcast",
     "ETH": "/ethereum/broadcast",
     "SOL": "/solana/broadcast",
-    "XRP": "/xrp/broadcast",
 }
 
 UTXO_CHAINS = {
@@ -100,6 +92,31 @@ ERC20_TOKENS = {
     "USDT": {"address": "0xdAC17F958D2ee523a2206206994597C13D831ec7", "decimals": 6},
     "USDC": {"address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6},
     "DAI": {"address": "0x6B175474E89094C44Da98b954EedeAC495271d0F", "decimals":18}
+}
+
+fees = {
+    "BTC": 1,
+    "LTC": 1,
+    "BCH": 1,
+}
+
+
+EVM_CHAINS = {
+    "ETH": {
+        "rpc_mainnet": "https://eth.llamarpc.com",
+        "rpc_testnet": "https://sepolia.infura.io/v3/YOUR_KEY",
+        "chain_id": 1,
+    },
+    "BNB": {
+        "rpc_mainnet": "https://bsc-dataseed.binance.org",
+        "rpc_testnet": "https://data-seed-prebsc-1-s1.binance.org:8545",
+        "chain_id": 56,
+    },
+    "MATIC": {
+        "rpc_mainnet": "https://polygon-rpc.com",
+        "rpc_testnet": "https://rpc-mumbai.maticvigil.com",
+        "chain_id": 137,
+    }
 }
 
 def get_price(crypto, pair="USDC"):
@@ -194,11 +211,6 @@ class WalletGen:
         self._save(key_pair["address"], key_pair["private_key"], "EVM")
         return key_pair
     
-    def generate_XRP(self):
-        key_pair = self._generate_wallet(Bip44Coins.RIPPLE) 
-        self._save(key_pair["address"], key_pair["private_key"], "XRP")
-        return key_pair
-    
     def generate_BCH(self):
         key_pair = self._generate_wallet(Bip44Coins.BITCOIN_CASH)
         self._save(key_pair["address"], key_pair["private_key"], "BCH")
@@ -232,8 +244,6 @@ class WalletScan:
                     result = self._check_evm()
                 elif self.type == "SOL":
                     result = self._check_sol()
-                elif self.type == "XRP":
-                    result = self._check_xrp()
                 else:
                     result = self._check_utxo()
                 if result:
@@ -299,37 +309,14 @@ class WalletScan:
                 "confirmed": True
             }
         
-    def _check_xrp(self):
-        resp = requests.post("https://s1.ripple.com:51234/", json={
-            "method": "account_info",
-            "params": [{
-                "account": self.address,
-                "ledger_index": "validated"
-            }]
-        })
-
-        if resp.status_code != 200 or not resp.text:
-            return None
-
-        data = resp.json()
-        result = data.get("result", {})
-
-        if result.get("status") == "success":
-            balance = int(result["account_data"]["Balance"])
-            if balance > 0:
-                return {
-                    "detected": True,
-                    "balance": balance / 1_000_000,
-                    "confirmed": True
-                }
-
 class WalletSend:
-    def __init__(self, private_key, type, address, amount: float|Decimal|int, testnet=False):
+    def __init__(self, private_key:str, type:str, address:str, amount: float|Decimal|int, txid:str="", testnet=False):
         self.private = private_key
         self.type = type
         self.address = address
         self.amount = amount
         self.testnet = testnet
+        self.txid = txid
 
     def broadcast(self, data):
         url = f"https://api.tatum.io/v3/{BROADCAST_PATHS[self.type().lower()]}"
@@ -341,21 +328,76 @@ class WalletSend:
         return requests.post(url, headers=headers, json={"txData": data}).json()
     
     def _signUTXO(self):
-        pass
+        key = Key(self.private, network=UTXO_CHAINS[self.type]["network"])
+        tx = Transaction(network=UTXO_CHAINS[self.type]["network"])
+        tx.add_input(prev_txid=self.txid, output_n=0, value=int(self.amount * coin_decimals[self.type]), keys=[key])
+        tx.add_output(value=int(self.amount * coin_decimals[self.type]), address=self.address)
+        tx.sign()
 
-    def _signEVM(self):
-        pass
+        fee = len(tx.raw()) * fees[self.type]
+
+        tx2 = Transaction(network=UTXO_CHAINS[self.type]["network"])
+        tx2.add_input(prev_txid=self.txid, output_n=0, value=int(self.amount * coin_decimals[self.type]), keys=[key])
+        tx2.add_output(value=int(self.amount * coin_decimals[self.type])-fee, address=self.address)
+        tx2.sign()
+
+        return tx2.raw_hex()
     
-    def _signXRP(self):
-        pass
+    def _signEVM(self):
+        rpc_url = EVM_CHAINS[self.type]["rpc_testnet"] if self.testnet else EVM_CHAINS[self.type]["rpc_mainnet"]
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        acct = Account.from_key(self.private)
+        amount_wei = int(self.amount * coin_decimals[self.type])
+        sequence = w3.eth.get_transaction_count(acct.address)
+        gas_price = w3.eth.gas_price
+        gas_limit = w3.eth.estimate_gas({
+            "from": acct.address,
+            "to": Web3.to_checksum_address(self.address),
+            "value": amount_wei,
+        })
+        fee = gas_limit * gas_price
+        txn = {
+            "to": Web3.to_checksum_address(self.address),
+            "value": amount_wei - fee,
+            "nonce": sequence,
+            "gas": gas_limit,
+            "gasPrice": gas_price,
+            "chainId": EVM_CHAINS[self.type]["chain_id"],
+        }
 
+        signed = Account.sign_transaction(txn, self.private)
+        return signed.raw_transaction.hex()
+    
     def _signSOL(self):
-        pass
+        url = "https://api.devnet.solana.com" if self.testnet else "https://api.mainnet-beta.solana.com"
+        client = Client(url)
 
+        keypair = Keypair.from_base58_string(self.private)
+        to_pubkey = Pubkey.from_string(self.address)
+
+        amount_lamports = int(self.amount * 10**9)
+
+        recent_blockhash = client.get_latest_blockhash().value.blockhash
+
+        ix = transfer(TransferParams(
+            from_pubkey=keypair.pubkey(),
+            to_pubkey=to_pubkey,
+            lamports=amount_lamports,
+        ))
+
+        msg = Message.new_with_blockhash([ix], keypair.pubkey(), recent_blockhash)
+        tx = SolTransaction([keypair], msg, recent_blockhash)
+        return base58.b58encode(bytes(tx)).decode()
+    
 #w = WalletGen()
-#
 #v = w.generate_EVM()
 #print(v)
-#
+
 #s = WalletScan(v["address"], "ETH", v["expiry"])
 #s.scan()
+
+
+#Priv  type   address to    amount   txid                                                  
+w = WalletSend(private_key="2DY44P718kbSphV2vTwdrnBMJWppAUbMk97UmXafWvZGyonjipBSRyGYpxuWYiaWwfyKmcUPJY4v32bM21xTYnn6", type="SOL", address="GFkPNpmBsBMGwMRjmnQKBmLLVAemP1NWVi2oSBkF3VZY", amount=0.001)
+
+print(w._signSOL())
