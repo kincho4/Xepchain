@@ -9,6 +9,7 @@ A multi-chain cryptocurrency payment processor built with Python and Flask, supp
 - Confirmation tracking per blockchain
 - RESTful API for creating and monitoring deposits
 - ERC-20 token support (USDC, USDT, DAI)
+- Auto currency-conversion via FixedFloat (https://ff.io)
 
 ## Supported Coins & Tokens
 
