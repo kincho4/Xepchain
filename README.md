@@ -22,7 +22,6 @@ A multi-chain cryptocurrency payment processor built with Python and Flask, supp
 | ETH  | Ethereum | 12 |
 | BNB  | BNB Smart Chain | 25 |
 | SOL  | Solana | 1 |
-| XRP  | Ripple | 1 |
 | TRX  | Tron | 21 |
 
 ### ERC-20 Tokens (Ethereum)
