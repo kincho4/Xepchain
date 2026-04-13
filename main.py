@@ -168,9 +168,25 @@ def get_price(crypto, pair="USDC"):
     return clean_mean(prices)
 
 class WalletGen:
-    def __init__(self):
+    def __init__(self, type):
         self.mnemonic = Bip39MnemonicGenerator().FromWordsNumber(12)
         self.seed_bytes = Bip39SeedGenerator(self.mnemonic).Generate()
+        self.type = type
+
+        generators = {
+        "BTC": self._generate_BTC,
+        "LTC": self._generate_LTC,
+        "EVM": self._generate_EVM,
+        "SOL": self._generate_SOL,
+        "BCH": self._generate_BCH
+        }
+    
+        generator = generators.get(self.type)
+        if generator is None:
+            raise ValueError(f"Not supported: {self.type}")
+        result = generator()
+        self.address = result["address"]
+        self.expiry = result["expiry"]
 
     def _encrypt(self, msg):
         gpg = gnupg.GPG()
@@ -196,27 +212,27 @@ class WalletGen:
             "expiry": datetime.now() + timedelta(hours=1)
         }
     
-    def generate_BTC(self): # p2pkh
+    def _generate_BTC(self): # p2pkh
         key_pair = self._generate_wallet(Bip44Coins.BITCOIN)
         self._save(key_pair["address"], key_pair["private_key"], "BTC")
         return key_pair
     
-    def generate_LTC(self):
+    def _generate_LTC(self):
         key_pair = self._generate_wallet(Bip44Coins.LITECOIN)
         self._save(key_pair["address"], key_pair["private_key"], "LTC")
         return key_pair
     
-    def generate_EVM(self):
+    def _generate_EVM(self):
         key_pair = self._generate_wallet(Bip44Coins.ETHEREUM)
         self._save(key_pair["address"], key_pair["private_key"], "EVM")
         return key_pair
     
-    def generate_BCH(self):
+    def _generate_BCH(self):
         key_pair = self._generate_wallet(Bip44Coins.BITCOIN_CASH)
         self._save(key_pair["address"], key_pair["private_key"], "BCH")
         return key_pair
     
-    def generate_SOL(self):
+    def _generate_SOL(self):
         key_pair = self._generate_wallet(Bip44Coins.SOLANA)
 
         full_keypair = bytes.fromhex(key_pair["private_key"]) + base58.b58decode(key_pair["address"])
@@ -224,6 +240,7 @@ class WalletGen:
 
         self._save(key_pair["address"], key_pair["private_key"], "SOL")
         return key_pair
+    
 
 class WalletScan:
     def __init__(self, address, type, expiry):
@@ -403,15 +420,4 @@ class WalletSend:
         tx = SolTransaction([keypair], msg, recent_blockhash)
         return base58.b58encode(bytes(tx)).decode()
     
-#w = WalletGen()
-#v = w.generate_EVM()
-#print(v)
 
-#s = WalletScan(v["address"], "ETH", v["expiry"])
-#s.scan()
-
-
-#Priv  type   address to    amount   txid                                                  
-w = WalletSend(private_key="2DY44P718kbSphV2vTwdrnBMJWppAUbMk97UmXafWvZGyonjipBSRyGYpxuWYiaWwfyKmcUPJY4v32bM21xTYnn6", type="SOL", address="GFkPNpmBsBMGwMRjmnQKBmLLVAemP1NWVi2oSBkF3VZY", amount=0.001)
-
-print(w._signSOL())

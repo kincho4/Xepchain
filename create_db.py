@@ -15,11 +15,11 @@ conn2 = sqlite3.connect("orders.db")
 cursor2 = conn2.cursor()
 
 #api requestor wallet details
-cursor2.execute(f"CREATE TABLE IF NOT EXISTS admin (time TEXT NOT NULL, order_id TEXT NOT NULL, main TEXT NOT NULL, LTC TEXT, BTC TEXT, BCH TEXT, EVM TEXT, SOL TEXT)")
+cursor2.execute(f"CREATE TABLE IF NOT EXISTS admin (time TEXT NOT NULL, order_id TEXT NOT NULL, main TEXT NOT NULL, LTC TEXT, BTC TEXT, BCH TEXT, EVM TEXT, SOL TEXT, webhook TEXT)")
 #api payee generated addresses
 cursor2.execute(f"CREATE TABLE IF NOT EXISTS client (time TEXT NOT NULL, order_id TEXT NOT NULL, LTC TEXT, BTC TEXT, BCH TEXT, EVM TEXT, SOL TEXT)")
 #payouts
-cursor2.execute("CREATE TABLE IF NOT EXISTS payouts (time TEXT NOT NULL, order_id TEXT NOT NULL, from_cc TEXT NOT NULL, to_cc TEXT NOT NULL, txid TEXT NOT NULL, via TEXT NOT NULL")
+cursor2.execute("CREATE TABLE IF NOT EXISTS payouts (time TEXT NOT NULL, order_id TEXT NOT NULL, from_cc TEXT NOT NULL, to_cc TEXT NOT NULL, txid TEXT NOT NULL, via TEXT NOT NULL, via_info TEXT)")
 
 conn2.commit()
 conn2.close()
