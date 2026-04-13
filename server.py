@@ -107,32 +107,29 @@ def order_status():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # get order info
+
     cursor.execute("SELECT * FROM admin WHERE order_id = ?", (order_id,))
     admin = cursor.fetchone()
     if not admin:
         conn.close()
         return jsonify({"error": "order not found"}), 404
 
-    # get generated client addresses
+
     cursor.execute("SELECT * FROM client WHERE order_id = ?", (order_id,))
     client = cursor.fetchone()
 
-    # get payouts for this order
+
     cursor.execute("SELECT time, from_cc, to_cc, txid, via, via_info FROM payouts WHERE order_id = ?", (order_id,))
     payouts = [dict(row) for row in cursor.fetchall()]
     conn.close()
 
-    # determine which coins the merchant accepts
     coin_types = ["LTC", "BTC", "BCH", "EVM", "SOL"]
     merchant_wallets = {c: admin[c] for c in coin_types if admin[c]}
 
-    # determine which addresses have been generated for the customer
     addresses = {}
     if client:
         addresses = {c: client[c] for c in coin_types if client[c]}
 
-    # derive status
     if payouts:
         status = "completed"
     elif addresses:
